@@ -998,5 +998,43 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
 </script>
+  <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCnvqGp4YFL8CuHwRNrQYF0Wz6hd-7Oih0",
+    authDomain: "oficina-do-abel.firebaseapp.com",
+    databaseURL: "https://oficina-do-abel-default-rtdb.firebaseio.com",
+    projectId: "oficina-do-abel",
+    storageBucket: "oficina-do-abel.firebasestorage.app",
+    messagingSenderId: "894287955652",
+    appId: "1:894287955652:web:8c9908fbc6d0e37611ab91",
+    measurementId: "G-N0Q9FN5J5S"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const dbRef = ref(db, 'oficina_dados');
+
+  // ESSAS LINHAS ABAIXO SÃO NECESSÁRIAS PARA O SEU CÓDIGO CONVERSAR COM O FIREBASE
+  window.salvarDados = () => set(dbRef, window.dados);
+  onValue(dbRef, (snapshot) => {
+    const val = snapshot.val();
+    if (val) {
+      window.dados = val;
+      if (typeof renderizarTudo === 'function') renderizarTudo();
+    }
+  });
+</script>
+
+<script>
+  // Não mude nada aqui, apenas garanta que onde você tinha
+  // comandos para salvar no computador, você chame: salvarDados();
+  window.dados = { clientes: [], servicos: [], pagamentos: [], gastos: [] };
+  // ... resto do seu código ...
+</script>
+
 </body>
 </html>
+
