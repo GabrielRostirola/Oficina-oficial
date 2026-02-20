@@ -493,11 +493,7 @@ let data = {
   gastos: []
 };
 
-function save() { localStorage.setItem('oficina_abel', JSON.stringify(data)); }
-function load() {
-  const d = localStorage.getItem('oficina_abel');
-  if(d) data = JSON.parse(d);
-}
+salvarNoFirebase();
 load();
 
 function uid() { return Date.now() + Math.random().toString(36).substr(2,5); }
@@ -1037,4 +1033,5 @@ document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('cli
 
 </body>
 </html>
+
 
