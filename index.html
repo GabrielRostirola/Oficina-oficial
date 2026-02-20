@@ -553,9 +553,12 @@
 
   // ---- REAL-TIME LISTENERS ----
   let listenersReady = { clientes: false, servicos: false, pagamentos: false, gastos: false };
+  let initialLoadDone = false;
 
   function checkAllReady() {
+    if (initialLoadDone) return;
     if (Object.values(listenersReady).every(v => v)) {
+      initialLoadDone = true;
       document.getElementById('loadingOverlay').style.display = 'none';
       document.getElementById('loginScreen').style.display = 'flex';
     }
