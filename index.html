@@ -230,13 +230,30 @@
   .payment-value.green { color:var(--green); }
   .payment-value.red { color:var(--red); }
   .payment-value.blue { color:var(--blue); }
+
+  /* Loading overlay */
+  #loadingOverlay {
+    position:fixed; inset:0; background:rgba(10,10,15,0.85); z-index:2000;
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px;
+  }
+  .loading-spinner {
+    width:48px; height:48px; border:3px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-text { font-family:'Bebas Neue'; font-size:18px; letter-spacing:3px; color:var(--accent); }
 </style>
 </head>
 <body>
 
+<!-- LOADING -->
+<div id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Conectando ao Firebase...</div>
+</div>
 
 <!-- LOGIN -->
-<div id="loginScreen">
+<div id="loginScreen" style="display:none;">
   <div class="login-box">
     <div class="login-logo">
       <div class="icon">🔧</div>
@@ -484,523 +501,18 @@
 <!-- PRINT AREA -->
 <div id="printArea"></div>
 
-<script>
-// ---- DATA ----
-let data = {
-  clientes: [],
-  servicos: [],
-  pagamentos: [],
-  gastos: []
-};
-
-salvarNoFirebase();
-  function load() {
-  const d = localStorage.getItem('oficina_abel');
-  if(d) data = JSON.parse(d);
-}
-load();
-
-function uid() { return Date.now() + Math.random().toString(36).substr(2,5); }
-function fmt(n) { return 'R$ ' + Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function today() { return new Date().toISOString().split('T')[0]; }
-
-// ---- LOGIN ----
-function doLogin() {
-  const u = document.getElementById('loginUser').value.trim();
-  const p = document.getElementById('loginPass').value;
-  if(u === 'gabriel' && p === 'lovemall1') {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    initApp();
-  } else {
-    document.getElementById('loginError').style.display = 'block';
-  }
-}
-function doLogout() {
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('loginUser').value = '';
-  document.getElementById('loginPass').value = '';
-}
-
-// ---- NAV ----
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  event.target.classList.add('active');
-  if(id==='dashboard') renderDashboard();
-  if(id==='servicos') renderServicoSelects();
-  if(id==='pagamentos') renderPagamentoSelect();
-  if(id==='gastos') { renderGastos(); renderGastoCards(); renderGastoFiltros(); }
-  if(id==='relatorios') renderRelatorioSelect();
-}
-
-// ---- INIT ----
-function initApp() {
-  // date
-  const d = new Date();
-  document.getElementById('topDate').textContent = d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  // set today on inputs
-  document.getElementById('srvData').value = today();
-  document.getElementById('gastoData').value = today();
-  renderDashboard();
-  renderClientes();
-  renderServicoSelects();
-  renderServicos();
-  renderPagamentoSelect();
-  renderGastos();
-  renderGastoCards();
-  renderGastoFiltros();
-  renderRelatorioSelect();
-}
-
-// ---- DASHBOARD ----
-function renderDashboard() {
-  const mes = new Date().getMonth();
-  const ano = new Date().getFullYear();
-  const servMes = data.servicos.filter(s => {
-    const d = new Date(s.data+'T12:00:00');
-    return d.getMonth()===mes && d.getFullYear()===ano;
-  });
-  const totalMes = servMes.reduce((a,s) => a+Number(s.valor),0);
-  const totalGeral = data.servicos.reduce((a,s) => a+Number(s.valor),0);
-  const totalGastosMes = data.gastos.filter(g => {
-    const d = new Date(g.data+'T12:00:00');
-    return d.getMonth()===mes && d.getFullYear()===ano;
-  }).reduce((a,g) => a+Number(g.valor),0);
-  const lucroMes = totalMes - totalGastosMes;
-
-  // pagamentos
-  let totalPago = 0, totalDevendo = 0;
-  data.clientes.forEach(c => {
-    const cSrv = data.servicos.filter(s => s.clienteId===c.id);
-    const totalSrv = cSrv.reduce((a,s)=>a+Number(s.valor),0);
-    const pag = data.pagamentos.find(p => p.clienteId===c.id);
-    const pago = pag ? Number(pag.pago) : 0;
-    totalPago += pago;
-    totalDevendo += Math.max(0, totalSrv - pago);
-  });
-
-  document.getElementById('dashCards').innerHTML = `
-    <div class="card"><div class="card-label">Faturamento do Mês</div><div class="card-value money">${fmt(totalMes)}</div></div>
-    <div class="card green"><div class="card-label">Lucro do Mês</div><div class="card-value ${lucroMes>=0?'money':'red'}">${fmt(lucroMes)}</div></div>
-    <div class="card red"><div class="card-label">Gastos do Mês</div><div class="card-value red">${fmt(totalGastosMes)}</div></div>
-    <div class="card blue"><div class="card-label">Total Geral de Serviços</div><div class="card-value blue">${fmt(totalGeral)}</div></div>
-    <div class="card"><div class="card-label">Clientes Cadastrados</div><div class="card-value">${data.clientes.length}</div></div>
-    <div class="card orange"><div class="card-label">A Receber</div><div class="card-value" style="color:var(--accent)">${fmt(totalDevendo)}</div></div>
-  `;
-
-  // last clients
-  const lastCli = [...data.clientes].reverse().slice(0,5);
-  document.getElementById('dashClientes').innerHTML = lastCli.length ? lastCli.map(c => {
-    const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
-    return `<div class="list-item"><div><div style="font-weight:700">${c.nome}</div><div style="font-size:12px;color:var(--text-muted)">${c.caminhao} · ${c.placa}</div></div><div style="color:var(--green);font-weight:700">${fmt(t)}</div></div>`;
-  }).join('') : '<div class="empty-state"><p>Nenhum cliente cadastrado</p></div>';
-
-  // em aberto
-  const emAberto = data.clientes.filter(c => {
-    const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
-    const pag = data.pagamentos.find(p=>p.clienteId===c.id);
-    const pago = pag ? Number(pag.pago) : 0;
-    return t - pago > 0;
-  });
-  document.getElementById('dashAberto').innerHTML = emAberto.length ? emAberto.map(c => {
-    const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
-    const pag = data.pagamentos.find(p=>p.clienteId===c.id);
-    const pago = pag ? Number(pag.pago) : 0;
-    const dev = t - pago;
-    const pct = t > 0 ? (pago/t*100) : 0;
-    return `<div class="list-item" style="flex-direction:column;align-items:flex-start;">
-      <div style="display:flex;justify-content:space-between;width:100%">
-        <div style="font-weight:700">${c.nome}</div>
-        <div style="color:var(--red);font-weight:700">${fmt(dev)}</div>
-      </div>
-      <div class="progress-bar" style="width:100%"><div class="progress-fill" style="width:${pct}%"></div></div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${pct.toFixed(0)}% pago</div>
-    </div>`;
-  }).join('') : '<div class="empty-state"><p>Nenhuma conta em aberto 🎉</p></div>';
-}
-
-// ---- CLIENTES ----
-function addCliente() {
-  const nome = document.getElementById('cliNome').value.trim();
-  const caminhao = document.getElementById('cliCaminhao').value.trim();
-  const placa = document.getElementById('cliPlaca').value.trim().toUpperCase();
-  if(!nome || !caminhao || !placa) { alert('Preencha nome, caminhão e placa!'); return; }
-  data.clientes.push({
-    id: uid(), nome, caminhao, placa,
-    tel: document.getElementById('cliTel').value,
-    ano: document.getElementById('cliAno').value,
-    cor: document.getElementById('cliCor').value,
-    obs: document.getElementById('cliObs').value,
-    created: today()
-  });
-  save();
-  ['cliNome','cliTel','cliCaminhao','cliPlaca','cliAno','cliCor','cliObs'].forEach(id => document.getElementById(id).value='');
-  renderClientes();
-  renderServicoSelects();
-  renderPagamentoSelect();
-  renderRelatorioSelect();
-}
-
-function renderClientes() {
-  const q = (document.getElementById('cliSearch')?.value||'').toLowerCase();
-  const list = data.clientes.filter(c => !q || c.nome.toLowerCase().includes(q) || c.placa.toLowerCase().includes(q) || c.caminhao.toLowerCase().includes(q));
-  const el = document.getElementById('clientesList');
-  if(!list.length) { el.innerHTML='<div class="empty-state"><div class="icon">👤</div><p>Nenhum cliente encontrado</p></div>'; return; }
-  el.innerHTML = list.map(c => {
-    const total = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
-    const pag = data.pagamentos.find(p=>p.clienteId===c.id);
-    const pago = pag ? Number(pag.pago) : 0;
-    const devendo = Math.max(0, total - pago);
-    return `<div class="client-card">
-      <div class="cc-plate">${c.placa}</div>
-      <div class="cc-name">${c.nome}</div>
-      <div class="cc-truck">🚛 ${c.caminhao}${c.ano?' · '+c.ano:''}${c.cor?' · '+c.cor:''}</div>
-      ${c.tel?`<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📞 ${c.tel}</div>`:''}
-      ${c.obs?`<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📝 ${c.obs}</div>`:''}
-      <div style="margin-top:10px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-        <div class="cc-total">Total: ${fmt(total)}</div>
-        <div style="font-size:13px;color:var(--green)">Pago: ${fmt(pago)}</div>
-        ${devendo>0?`<div style="font-size:13px;color:var(--red)">Devendo: ${fmt(devendo)}</div>`:'<span class="badge badge-green">Quitado</span>'}
-      </div>
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-secondary btn-sm" onclick="editCliente('${c.id}')">✏️ Editar</button>
-        <button class="btn btn-danger btn-sm" onclick="delCliente('${c.id}')">🗑️ Excluir</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function editCliente(id) {
-  const c = data.clientes.find(x=>x.id===id);
-  document.getElementById('editCliId').value = id;
-  document.getElementById('editCliNome').value = c.nome;
-  document.getElementById('editCliTel').value = c.tel||'';
-  document.getElementById('editCliCaminhao').value = c.caminhao;
-  document.getElementById('editCliPlaca').value = c.placa;
-  document.getElementById('editCliAno').value = c.ano||'';
-  document.getElementById('editCliCor').value = c.cor||'';
-  document.getElementById('editCliObs').value = c.obs||'';
-  openModal('modalEditCliente');
-}
-function saveEditCliente() {
-  const id = document.getElementById('editCliId').value;
-  const c = data.clientes.find(x=>x.id===id);
-  c.nome = document.getElementById('editCliNome').value;
-  c.tel = document.getElementById('editCliTel').value;
-  c.caminhao = document.getElementById('editCliCaminhao').value;
-  c.placa = document.getElementById('editCliPlaca').value.toUpperCase();
-  c.ano = document.getElementById('editCliAno').value;
-  c.cor = document.getElementById('editCliCor').value;
-  c.obs = document.getElementById('editCliObs').value;
-  save(); closeModal('modalEditCliente');
-  renderClientes(); renderServicoSelects(); renderPagamentoSelect(); renderRelatorioSelect();
-}
-function delCliente(id) {
-  if(!confirm('Excluir este cliente e todos os seus serviços?')) return;
-  data.clientes = data.clientes.filter(c=>c.id!==id);
-  data.servicos = data.servicos.filter(s=>s.clienteId!==id);
-  data.pagamentos = data.pagamentos.filter(p=>p.clienteId!==id);
-  save(); renderClientes(); renderServicoSelects(); renderPagamentoSelect();
-}
-
-// ---- SERVICOS ----
-function renderServicoSelects() {
-  ['srvCliente','srvFiltro'].forEach(selId => {
-    const sel = document.getElementById(selId);
-    const val = sel.value;
-    sel.innerHTML = selId==='srvCliente' ? '<option value="">Selecione um cliente...</option>' : '<option value="">Todos os clientes</option>';
-    data.clientes.forEach(c => { sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`; });
-    sel.value = val;
-  });
-}
-function updatePlaca() {
-  const id = document.getElementById('srvCliente').value;
-  const c = data.clientes.find(x=>x.id===id);
-  document.getElementById('srvPlaca').value = c ? c.placa : '';
-}
-function addServico() {
-  const clienteId = document.getElementById('srvCliente').value;
-  const desc = document.getElementById('srvDesc').value.trim();
-  const valor = document.getElementById('srvValor').value;
-  if(!clienteId || !desc || !valor) { alert('Preencha cliente, serviço e valor!'); return; }
-  data.servicos.push({
-    id: uid(), clienteId, desc, valor: Number(valor),
-    data: document.getElementById('srvData').value,
-    pecas: document.getElementById('srvPecas').value,
-    mecanico: document.getElementById('srvMecanico').value
-  });
-  save();
-  ['srvDesc','srvValor','srvPecas','srvMecanico'].forEach(id => document.getElementById(id).value='');
-  renderServicos(); renderDashboard();
-}
-function renderServicos() {
-  const filtro = document.getElementById('srvFiltro')?.value||'';
-  const list = data.servicos.filter(s => !filtro || s.clienteId===filtro);
-  const tbody = document.getElementById('servicosTable');
-  if(!list.length) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">Nenhum serviço encontrado</td></tr>'; return; }
-  tbody.innerHTML = list.map(s => {
-    const c = data.clientes.find(x=>x.id===s.clienteId);
-    return `<tr>
-      <td><span style="font-family:Share Tech Mono;font-size:12px">${s.data||'-'}</span></td>
-      <td>${c?c.nome:'—'}</td>
-      <td><span style="font-family:Share Tech Mono;background:var(--accent);color:#000;padding:2px 8px;font-size:11px;font-weight:700">${c?c.placa:'—'}</span></td>
-      <td style="max-width:200px">${s.desc}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${s.pecas||'—'}</td>
-      <td style="font-size:12px">${s.mecanico||'—'}</td>
-      <td style="color:var(--green);font-weight:700">${fmt(s.valor)}</td>
-      <td>
-        <button class="btn btn-secondary btn-sm" onclick="editServico('${s.id}')">✏️</button>
-        <button class="btn btn-danger btn-sm" onclick="delServico('${s.id}')">🗑️</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-function editServico(id) {
-  const s = data.servicos.find(x=>x.id===id);
-  document.getElementById('editSrvId').value = id;
-  document.getElementById('editSrvDesc').value = s.desc;
-  document.getElementById('editSrvValor').value = s.valor;
-  document.getElementById('editSrvPecas').value = s.pecas||'';
-  openModal('modalEditServico');
-}
-function saveEditServico() {
-  const id = document.getElementById('editSrvId').value;
-  const s = data.servicos.find(x=>x.id===id);
-  s.desc = document.getElementById('editSrvDesc').value;
-  s.valor = Number(document.getElementById('editSrvValor').value);
-  s.pecas = document.getElementById('editSrvPecas').value;
-  save(); closeModal('modalEditServico'); renderServicos(); renderDashboard();
-}
-function delServico(id) {
-  if(!confirm('Excluir este serviço?')) return;
-  data.servicos = data.servicos.filter(s=>s.id!==id);
-  save(); renderServicos(); renderDashboard();
-}
-
-// ---- PAGAMENTOS ----
-function renderPagamentoSelect() {
-  const sel = document.getElementById('pagCliente');
-  const val = sel.value;
-  sel.innerHTML = '<option value="">Selecione um cliente...</option>';
-  data.clientes.forEach(c => { sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`; });
-  sel.value = val;
-}
-function renderPagamento() {
-  const id = document.getElementById('pagCliente').value;
-  const area = document.getElementById('pagamentoArea');
-  if(!id) { area.innerHTML=''; return; }
-  const c = data.clientes.find(x=>x.id===id);
-  const servs = data.servicos.filter(s=>s.clienteId===id);
-  const total = servs.reduce((a,s)=>a+Number(s.valor),0);
-  let pag = data.pagamentos.find(p=>p.clienteId===id);
-  if(!pag) { pag = {clienteId:id, pago:0, historico:[]}; data.pagamentos.push(pag); save(); }
-  const pago = Number(pag.pago||0);
-  const devendo = Math.max(0, total - pago);
-  const status = devendo<=0 ? 'QUITADO' : pago===0 ? 'PENDENTE' : 'PARCIAL';
-  const statusClass = devendo<=0 ? 'badge-green' : pago===0 ? 'badge-red' : 'badge-yellow';
-
-  area.innerHTML = `
-    <div class="section">
-      <div class="section-title">Situação de ${c.nome} — ${c.placa}</div>
-      <div class="payment-row">
-        <div><div class="payment-label">Total dos Serviços</div><div class="payment-value blue">${fmt(total)}</div></div>
-        <div><div class="payment-label">Total Pago</div><div class="payment-value green">${fmt(pago)}</div></div>
-        <div><div class="payment-label">Saldo Devedor</div><div class="payment-value ${devendo>0?'red':'green'}">${fmt(devendo)}</div></div>
-      </div>
-      <div style="margin-bottom:16px">
-        <span class="badge ${statusClass}">${status}</span>
-        ${total>0?`<div class="progress-bar" style="margin-top:12px"><div class="progress-fill" style="width:${Math.min(100,pago/total*100)}%"></div></div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">${Math.min(100,pago/total*100).toFixed(1)}% pago</div>`:''}
-      </div>
-      <div class="form-row" style="max-width:500px">
-        <div class="field"><label>Valor Recebido (R$)</label><input type="number" id="pagValor" placeholder="0,00" step="0.01" min="0"></div>
-        <div class="field"><label>Forma de Pagamento</label>
-          <select id="pagForma">
-            <option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Cheque</option><option>Transferência</option>
-          </select>
-        </div>
-        <div class="field" style="align-self:flex-end"><button class="btn btn-success" onclick="registrarPagamento('${id}')">💰 REGISTRAR PAGAMENTO</button></div>
-      </div>
-      ${pag.historico&&pag.historico.length?`
-      <div style="margin-top:20px">
-        <div class="section-title" style="font-size:14px">Histórico de Pagamentos</div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Data</th><th>Valor</th><th>Forma</th></tr></thead>
-          <tbody>${pag.historico.map(h=>`<tr><td>${h.data}</td><td style="color:var(--green)">${fmt(h.valor)}</td><td>${h.forma}</td></tr>`).join('')}</tbody>
-        </table></div>
-      </div>`:''}
-    </div>
-    <div class="section">
-      <div class="section-title">Serviços Realizados</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Data</th><th>Serviço</th><th>Peças</th><th>Mecânico</th><th>Valor</th></tr></thead>
-        <tbody>${servs.length?servs.map(s=>`<tr><td>${s.data||'—'}</td><td>${s.desc}</td><td>${s.pecas||'—'}</td><td>${s.mecanico||'—'}</td><td style="color:var(--green)">${fmt(s.valor)}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Nenhum serviço</td></tr>'}</tbody>
-      </table></div>
-    </div>
-  `;
-}
-function registrarPagamento(clienteId) {
-  const valor = Number(document.getElementById('pagValor').value);
-  const forma = document.getElementById('pagForma').value;
-  if(!valor || valor<=0) { alert('Informe o valor recebido!'); return; }
-  let pag = data.pagamentos.find(p=>p.clienteId===clienteId);
-  if(!pag) { pag = {clienteId, pago:0, historico:[]}; data.pagamentos.push(pag); }
-  pag.pago = (Number(pag.pago)||0) + valor;
-  if(!pag.historico) pag.historico = [];
-  pag.historico.push({ data: today(), valor, forma });
-  save(); renderPagamento(); renderDashboard();
-}
-
-// ---- GASTOS ----
-function addGasto() {
-  const categ = document.getElementById('gastoCateg').value;
-  const desc = document.getElementById('gastoDesc').value.trim();
-  const valor = Number(document.getElementById('gastoValor').value);
-  const dt = document.getElementById('gastoData').value;
-  if(!desc || !valor) { alert('Preencha descrição e valor!'); return; }
-  data.gastos.push({ id: uid(), categ, desc, valor, data: dt||today() });
-  save(); document.getElementById('gastoDesc').value=''; document.getElementById('gastoValor').value='';
-  renderGastos(); renderGastoCards(); renderDashboard();
-}
-function renderGastoFiltros() {
-  const categorias = [...new Set(data.gastos.map(g=>g.categ))];
-  const sel = document.getElementById('gastoFiltro');
-  sel.innerHTML = '<option value="">Todas</option>';
-  categorias.forEach(c => sel.innerHTML += `<option>${c}</option>`);
-
-  const meses = document.getElementById('gastoMes');
-  meses.innerHTML = '<option value="">Todos os meses</option>';
-  const now = new Date();
-  for(let i=0;i<12;i++) {
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const label = d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-    meses.innerHTML += `<option value="${val}">${label}</option>`;
-  }
-}
-function renderGastoCards() {
-  const por = {};
-  data.gastos.forEach(g => { por[g.categ] = (por[g.categ]||0) + g.valor; });
-  const total = Object.values(por).reduce((a,v)=>a+v,0);
-  const colors = ['','green','red','blue','orange'];
-  let i=0;
-  document.getElementById('gastoCards').innerHTML = `<div class="card"><div class="card-label">Total de Gastos</div><div class="card-value red">${fmt(total)}</div></div>` +
-    Object.entries(por).map(([k,v]) => `<div class="card ${colors[i++%colors.length]}"><div class="card-label">${k}</div><div class="card-value">${fmt(v)}</div></div>`).join('');
-}
-function renderGastos() {
-  const filtro = document.getElementById('gastoFiltro')?.value||'';
-  const mes = document.getElementById('gastoMes')?.value||'';
-  let list = data.gastos.filter(g => (!filtro||g.categ===filtro) && (!mes||g.data.startsWith(mes)));
-  const tbody = document.getElementById('gastosTable');
-  if(!list.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">Nenhum gasto registrado</td></tr>'; return; }
-  tbody.innerHTML = list.map(g => `<tr>
-    <td><span style="font-family:Share Tech Mono;font-size:12px">${g.data}</span></td>
-    <td><span class="badge badge-yellow">${g.categ}</span></td>
-    <td>${g.desc}</td>
-    <td style="color:var(--red);font-weight:700">${fmt(g.valor)}</td>
-    <td><button class="btn btn-danger btn-sm" onclick="delGasto('${g.id}')">🗑️</button></td>
-  </tr>`).join('');
-}
-function delGasto(id) {
-  if(!confirm('Excluir este gasto?')) return;
-  data.gastos = data.gastos.filter(g=>g.id!==id);
-  save(); renderGastos(); renderGastoCards(); renderDashboard();
-}
-
-// ---- RELATÓRIOS / NOTA ----
-function renderRelatorioSelect() {
-  const sel = document.getElementById('relCliente');
-  const val = sel.value;
-  sel.innerHTML = '<option value="">Selecione...</option>';
-  data.clientes.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`);
-  sel.value = val;
-}
-function previewNota() {
-  const id = document.getElementById('relCliente').value;
-  if(!id) { document.getElementById('notaPreview').innerHTML=''; return; }
-  document.getElementById('notaPreview').innerHTML = `<div class="section"><div class="section-title">Pré-visualização</div>${buildReceiptHTML(id)}</div>`;
-}
-function buildReceiptHTML(clienteId) {
-  const c = data.clientes.find(x=>x.id===clienteId);
-  const servs = data.servicos.filter(s=>s.clienteId===clienteId);
-  const total = servs.reduce((a,s)=>a+Number(s.valor),0);
-  const pag = data.pagamentos.find(p=>p.clienteId===clienteId);
-  const pago = pag ? Number(pag.pago||0) : 0;
-  const devendo = Math.max(0, total - pago);
-  const dt = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  return `<div class="receipt">
-    <div class="receipt-header">
-      <h1>⚙️ OFICINA MECÂNICA DO ABEL</h1>
-      <p>Serviços em Caminhões e Veículos Pesados</p>
-      <p>Data de emissão: ${dt}</p>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:13px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Dados do Cliente</div>
-      <div class="receipt-info">
-        <div><strong>Nome:</strong> ${c.nome}</div>
-        <div><strong>Telefone:</strong> ${c.tel||'—'}</div>
-        <div><strong>Caminhão:</strong> ${c.caminhao}</div>
-        <div><strong>Placa:</strong> ${c.placa}</div>
-        <div><strong>Ano:</strong> ${c.ano||'—'}</div>
-        <div><strong>Cor:</strong> ${c.cor||'—'}</div>
-      </div>
-    </div>
-    <div style="font-size:13px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Serviços Realizados</div>
-    <table class="receipt-table">
-      <thead><tr><th>Data</th><th>Serviço</th><th>Peças</th><th>Mecânico</th><th style="text-align:right">Valor</th></tr></thead>
-      <tbody>
-        ${servs.length?servs.map(s=>`<tr><td>${s.data||'—'}</td><td>${s.desc}</td><td>${s.pecas||'—'}</td><td>${s.mecanico||'—'}</td><td style="text-align:right">R$ ${Number(s.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">Nenhum serviço</td></tr>'}
-      </tbody>
-    </table>
-    <div class="receipt-total">
-      <div class="total-line"><span>Total dos Serviços:</span><span>R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-      <div class="total-line"><span>Valor Pago:</span><span style="color:green">R$ ${pago.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-      <div class="total-line grand"><span>SALDO DEVEDOR:</span><span style="color:${devendo>0?'red':'green'}">R$ ${devendo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    </div>
-    ${c.obs?`<div style="margin-top:16px;padding:12px;background:#f5f5f5;font-size:13px"><strong>Observações:</strong> ${c.obs}</div>`:''}
-    <div class="receipt-footer">
-      <p>Oficina Mecânica do Abel — Obrigado pela preferência!</p>
-      <p style="margin-top:4px">Esta nota não tem valor fiscal</p>
-    </div>
-  </div>`;
-}
-function imprimirNota() {
-  const id = document.getElementById('relCliente').value;
-  if(!id) { alert('Selecione um cliente!'); return; }
-  const html = buildReceiptHTML(id);
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><title>Nota - Oficina do Abel</title>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-      body{margin:0;padding:20px;background:#fff;font-family:Rajdhani,sans-serif}
-      .receipt{max-width:700px;margin:0 auto;padding:40px}
-      .receipt-header{text-align:center;border-bottom:2px solid #000;padding-bottom:16px;margin-bottom:16px}
-      .receipt-header h1{font-family:'Bebas Neue';font-size:28px;letter-spacing:2px}
-      .receipt-header p{font-size:13px;color:#555}
-      .receipt-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
-      .receipt-info div{font-size:14px}
-      table{width:100%;border-collapse:collapse;margin-bottom:16px}
-      th{background:#000;color:#fff;padding:8px 12px;text-align:left;font-size:12px;letter-spacing:1px}
-      td{padding:8px 12px;border-bottom:1px solid #ddd;font-size:13px}
-      .receipt-total{text-align:right;border-top:2px solid #000;padding-top:12px}
-      .total-line{display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px}
-      .grand{font-family:'Bebas Neue';font-size:22px}
-      .receipt-footer{text-align:center;margin-top:20px;font-size:12px;color:#777;border-top:1px solid #ddd;padding-top:12px}
-      @media print{@page{margin:10mm}}
-    </style></head><body>${html}<br><button onclick="window.print()" style="display:block;margin:20px auto;padding:12px 30px;background:#000;color:#fff;border:none;font-size:16px;cursor:pointer;font-family:Rajdhani;letter-spacing:2px">🖨️ IMPRIMIR</button></body></html>`);
-  win.document.close();
-}
-
-// ---- MODALS ----
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
-</script>
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
+  import {
+    getDatabase,
+    ref,
+    set,
+    onValue,
+    remove,
+    update
+  } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCnvqGp4YFL8CuHwRNrQYF0Wz6hd-7Oih0",
@@ -1014,28 +526,578 @@ document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('cli
   };
 
   const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
   const db = getDatabase(app);
-  const dbRef = ref(db, 'oficina_dados');
 
-  // ESSAS LINHAS ABAIXO SÃO NECESSÁRIAS PARA O SEU CÓDIGO CONVERSAR COM O FIREBASE
-  window.salvarDados = () => set(dbRef, window.dados);
-  onValue(dbRef, (snapshot) => {
-    const val = snapshot.val();
-    if (val) {
-      window.dados = val;
-      if (typeof renderizarTudo === 'function') renderizarTudo();
+  // ---- DATA (in-memory, synced from Firebase) ----
+  window.data = { clientes: [], servicos: [], pagamentos: [], gastos: [] };
+
+  // Helper: convert Firebase object (keyed by id) to array
+  function objToArr(obj) {
+    if (!obj) return [];
+    return Object.values(obj);
+  }
+
+  // ---- FIREBASE SAVE FUNCTIONS ----
+  window.fbSaveCliente = (cliente) => set(ref(db, 'clientes/' + cliente.id), cliente);
+  window.fbDeleteCliente = (id) => remove(ref(db, 'clientes/' + id));
+
+  window.fbSaveServico = (servico) => set(ref(db, 'servicos/' + servico.id), servico);
+  window.fbDeleteServico = (id) => remove(ref(db, 'servicos/' + id));
+
+  window.fbSavePagamento = (pag) => set(ref(db, 'pagamentos/' + pag.clienteId), pag);
+  window.fbDeletePagamento = (clienteId) => remove(ref(db, 'pagamentos/' + clienteId));
+
+  window.fbSaveGasto = (gasto) => set(ref(db, 'gastos/' + gasto.id), gasto);
+  window.fbDeleteGasto = (id) => remove(ref(db, 'gastos/' + id));
+
+  // ---- REAL-TIME LISTENERS ----
+  let listenersReady = { clientes: false, servicos: false, pagamentos: false, gastos: false };
+
+  function checkAllReady() {
+    if (Object.values(listenersReady).every(v => v)) {
+      document.getElementById('loadingOverlay').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+  }
+
+  onValue(ref(db, 'clientes'), (snapshot) => {
+    window.data.clientes = objToArr(snapshot.val());
+    listenersReady.clientes = true;
+    checkAllReady();
+    if (document.getElementById('app').style.display !== 'none') {
+      renderClientes();
+      renderServicoSelects();
+      renderPagamentoSelect();
+      renderRelatorioSelect();
+      renderDashboard();
     }
   });
+
+  onValue(ref(db, 'servicos'), (snapshot) => {
+    window.data.servicos = objToArr(snapshot.val());
+    listenersReady.servicos = true;
+    checkAllReady();
+    if (document.getElementById('app').style.display !== 'none') {
+      renderServicos();
+      renderDashboard();
+    }
+  });
+
+  onValue(ref(db, 'pagamentos'), (snapshot) => {
+    window.data.pagamentos = objToArr(snapshot.val());
+    listenersReady.pagamentos = true;
+    checkAllReady();
+    if (document.getElementById('app').style.display !== 'none') {
+      renderDashboard();
+    }
+  });
+
+  onValue(ref(db, 'gastos'), (snapshot) => {
+    window.data.gastos = objToArr(snapshot.val());
+    listenersReady.gastos = true;
+    checkAllReady();
+    if (document.getElementById('app').style.display !== 'none') {
+      renderGastos();
+      renderGastoCards();
+      renderGastoFiltros();
+      renderDashboard();
+    }
+  });
+
 </script>
 
 <script>
-  // Não mude nada aqui, apenas garanta que onde você tinha
-  // comandos para salvar no computador, você chame: salvarDados();
-  window.dados = { clientes: [], servicos: [], pagamentos: [], gastos: [] };
-  // ... resto do seu código ...
-</script>
+  // ---- UTILS ----
+  function uid() { return Date.now() + Math.random().toString(36).substr(2,5); }
+  function fmt(n) { return 'R$ ' + Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function today() { return new Date().toISOString().split('T')[0]; }
 
+  // ---- LOGIN ----
+  function doLogin() {
+    const u = document.getElementById('loginUser').value.trim();
+    const p = document.getElementById('loginPass').value;
+    if(u === 'gabriel' && p === 'lovemall1') {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      initApp();
+    } else {
+      document.getElementById('loginError').style.display = 'block';
+    }
+  }
+  function doLogout() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+  }
+
+  // ---- NAV ----
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + id).classList.add('active');
+    event.target.classList.add('active');
+    if(id==='dashboard') renderDashboard();
+    if(id==='servicos') renderServicoSelects();
+    if(id==='pagamentos') renderPagamentoSelect();
+    if(id==='gastos') { renderGastos(); renderGastoCards(); renderGastoFiltros(); }
+    if(id==='relatorios') renderRelatorioSelect();
+  }
+
+  // ---- INIT ----
+  function initApp() {
+    const d = new Date();
+    document.getElementById('topDate').textContent = d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+    document.getElementById('srvData').value = today();
+    document.getElementById('gastoData').value = today();
+    renderDashboard();
+    renderClientes();
+    renderServicoSelects();
+    renderServicos();
+    renderPagamentoSelect();
+    renderGastos();
+    renderGastoCards();
+    renderGastoFiltros();
+    renderRelatorioSelect();
+  }
+
+  // ---- DASHBOARD ----
+  function renderDashboard() {
+    const mes = new Date().getMonth();
+    const ano = new Date().getFullYear();
+    const servMes = data.servicos.filter(s => {
+      const d = new Date(s.data+'T12:00:00');
+      return d.getMonth()===mes && d.getFullYear()===ano;
+    });
+    const totalMes = servMes.reduce((a,s) => a+Number(s.valor),0);
+    const totalGeral = data.servicos.reduce((a,s) => a+Number(s.valor),0);
+    const totalGastosMes = data.gastos.filter(g => {
+      const d = new Date(g.data+'T12:00:00');
+      return d.getMonth()===mes && d.getFullYear()===ano;
+    }).reduce((a,g) => a+Number(g.valor),0);
+    const lucroMes = totalMes - totalGastosMes;
+
+    let totalPago = 0, totalDevendo = 0;
+    data.clientes.forEach(c => {
+      const cSrv = data.servicos.filter(s => s.clienteId===c.id);
+      const totalSrv = cSrv.reduce((a,s)=>a+Number(s.valor),0);
+      const pag = data.pagamentos.find(p => p.clienteId===c.id);
+      const pago = pag ? Number(pag.pago) : 0;
+      totalPago += pago;
+      totalDevendo += Math.max(0, totalSrv - pago);
+    });
+
+    document.getElementById('dashCards').innerHTML = `
+      <div class="card"><div class="card-label">Faturamento do Mês</div><div class="card-value money">${fmt(totalMes)}</div></div>
+      <div class="card green"><div class="card-label">Lucro do Mês</div><div class="card-value ${lucroMes>=0?'money':'red'}">${fmt(lucroMes)}</div></div>
+      <div class="card red"><div class="card-label">Gastos do Mês</div><div class="card-value red">${fmt(totalGastosMes)}</div></div>
+      <div class="card blue"><div class="card-label">Total Geral de Serviços</div><div class="card-value blue">${fmt(totalGeral)}</div></div>
+      <div class="card"><div class="card-label">Clientes Cadastrados</div><div class="card-value">${data.clientes.length}</div></div>
+      <div class="card orange"><div class="card-label">A Receber</div><div class="card-value" style="color:var(--accent)">${fmt(totalDevendo)}</div></div>
+    `;
+
+    const lastCli = [...data.clientes].reverse().slice(0,5);
+    document.getElementById('dashClientes').innerHTML = lastCli.length ? lastCli.map(c => {
+      const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
+      return `<div class="list-item"><div><div style="font-weight:700">${c.nome}</div><div style="font-size:12px;color:var(--text-muted)">${c.caminhao} · ${c.placa}</div></div><div style="color:var(--green);font-weight:700">${fmt(t)}</div></div>`;
+    }).join('') : '<div class="empty-state"><p>Nenhum cliente cadastrado</p></div>';
+
+    const emAberto = data.clientes.filter(c => {
+      const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
+      const pag = data.pagamentos.find(p=>p.clienteId===c.id);
+      const pago = pag ? Number(pag.pago) : 0;
+      return t - pago > 0;
+    });
+    document.getElementById('dashAberto').innerHTML = emAberto.length ? emAberto.map(c => {
+      const t = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
+      const pag = data.pagamentos.find(p=>p.clienteId===c.id);
+      const pago = pag ? Number(pag.pago) : 0;
+      const dev = t - pago;
+      const pct = t > 0 ? (pago/t*100) : 0;
+      return `<div class="list-item" style="flex-direction:column;align-items:flex-start;">
+        <div style="display:flex;justify-content:space-between;width:100%">
+          <div style="font-weight:700">${c.nome}</div>
+          <div style="color:var(--red);font-weight:700">${fmt(dev)}</div>
+        </div>
+        <div class="progress-bar" style="width:100%"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${pct.toFixed(0)}% pago</div>
+      </div>`;
+    }).join('') : '<div class="empty-state"><p>Nenhuma conta em aberto 🎉</p></div>';
+  }
+
+  // ---- CLIENTES ----
+  function addCliente() {
+    const nome = document.getElementById('cliNome').value.trim();
+    const caminhao = document.getElementById('cliCaminhao').value.trim();
+    const placa = document.getElementById('cliPlaca').value.trim().toUpperCase();
+    if(!nome || !caminhao || !placa) { alert('Preencha nome, caminhão e placa!'); return; }
+    const cliente = {
+      id: uid(), nome, caminhao, placa,
+      tel: document.getElementById('cliTel').value,
+      ano: document.getElementById('cliAno').value,
+      cor: document.getElementById('cliCor').value,
+      obs: document.getElementById('cliObs').value,
+      created: today()
+    };
+    fbSaveCliente(cliente);
+    ['cliNome','cliTel','cliCaminhao','cliPlaca','cliAno','cliCor','cliObs'].forEach(id => document.getElementById(id).value='');
+  }
+
+  function renderClientes() {
+    const q = (document.getElementById('cliSearch')?.value||'').toLowerCase();
+    const list = data.clientes.filter(c => !q || c.nome.toLowerCase().includes(q) || c.placa.toLowerCase().includes(q) || c.caminhao.toLowerCase().includes(q));
+    const el = document.getElementById('clientesList');
+    if(!list.length) { el.innerHTML='<div class="empty-state"><div class="icon">👤</div><p>Nenhum cliente encontrado</p></div>'; return; }
+    el.innerHTML = list.map(c => {
+      const total = data.servicos.filter(s=>s.clienteId===c.id).reduce((a,s)=>a+Number(s.valor),0);
+      const pag = data.pagamentos.find(p=>p.clienteId===c.id);
+      const pago = pag ? Number(pag.pago) : 0;
+      const devendo = Math.max(0, total - pago);
+      return `<div class="client-card">
+        <div class="cc-plate">${c.placa}</div>
+        <div class="cc-name">${c.nome}</div>
+        <div class="cc-truck">🚛 ${c.caminhao}${c.ano?' · '+c.ano:''}${c.cor?' · '+c.cor:''}</div>
+        ${c.tel?`<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📞 ${c.tel}</div>`:''}
+        ${c.obs?`<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📝 ${c.obs}</div>`:''}
+        <div style="margin-top:10px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div class="cc-total">Total: ${fmt(total)}</div>
+          <div style="font-size:13px;color:var(--green)">Pago: ${fmt(pago)}</div>
+          ${devendo>0?`<div style="font-size:13px;color:var(--red)">Devendo: ${fmt(devendo)}</div>`:'<span class="badge badge-green">Quitado</span>'}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="editCliente('${c.id}')">✏️ Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="delCliente('${c.id}')">🗑️ Excluir</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function editCliente(id) {
+    const c = data.clientes.find(x=>x.id===id);
+    document.getElementById('editCliId').value = id;
+    document.getElementById('editCliNome').value = c.nome;
+    document.getElementById('editCliTel').value = c.tel||'';
+    document.getElementById('editCliCaminhao').value = c.caminhao;
+    document.getElementById('editCliPlaca').value = c.placa;
+    document.getElementById('editCliAno').value = c.ano||'';
+    document.getElementById('editCliCor').value = c.cor||'';
+    document.getElementById('editCliObs').value = c.obs||'';
+    openModal('modalEditCliente');
+  }
+  function saveEditCliente() {
+    const id = document.getElementById('editCliId').value;
+    const c = data.clientes.find(x=>x.id===id);
+    c.nome = document.getElementById('editCliNome').value;
+    c.tel = document.getElementById('editCliTel').value;
+    c.caminhao = document.getElementById('editCliCaminhao').value;
+    c.placa = document.getElementById('editCliPlaca').value.toUpperCase();
+    c.ano = document.getElementById('editCliAno').value;
+    c.cor = document.getElementById('editCliCor').value;
+    c.obs = document.getElementById('editCliObs').value;
+    fbSaveCliente(c);
+    closeModal('modalEditCliente');
+  }
+  function delCliente(id) {
+    if(!confirm('Excluir este cliente e todos os seus serviços?')) return;
+    // Delete client's services
+    data.servicos.filter(s=>s.clienteId===id).forEach(s => fbDeleteServico(s.id));
+    // Delete client's payment
+    fbDeletePagamento(id);
+    // Delete client
+    fbDeleteCliente(id);
+  }
+
+  // ---- SERVICOS ----
+  function renderServicoSelects() {
+    ['srvCliente','srvFiltro'].forEach(selId => {
+      const sel = document.getElementById(selId);
+      const val = sel.value;
+      sel.innerHTML = selId==='srvCliente' ? '<option value="">Selecione um cliente...</option>' : '<option value="">Todos os clientes</option>';
+      data.clientes.forEach(c => { sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`; });
+      sel.value = val;
+    });
+  }
+  function updatePlaca() {
+    const id = document.getElementById('srvCliente').value;
+    const c = data.clientes.find(x=>x.id===id);
+    document.getElementById('srvPlaca').value = c ? c.placa : '';
+  }
+  function addServico() {
+    const clienteId = document.getElementById('srvCliente').value;
+    const desc = document.getElementById('srvDesc').value.trim();
+    const valor = document.getElementById('srvValor').value;
+    if(!clienteId || !desc || !valor) { alert('Preencha cliente, serviço e valor!'); return; }
+    const servico = {
+      id: uid(), clienteId, desc, valor: Number(valor),
+      data: document.getElementById('srvData').value,
+      pecas: document.getElementById('srvPecas').value,
+      mecanico: document.getElementById('srvMecanico').value
+    };
+    fbSaveServico(servico);
+    ['srvDesc','srvValor','srvPecas','srvMecanico'].forEach(id => document.getElementById(id).value='');
+  }
+  function renderServicos() {
+    const filtro = document.getElementById('srvFiltro')?.value||'';
+    const list = data.servicos.filter(s => !filtro || s.clienteId===filtro);
+    const tbody = document.getElementById('servicosTable');
+    if(!list.length) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">Nenhum serviço encontrado</td></tr>'; return; }
+    tbody.innerHTML = list.map(s => {
+      const c = data.clientes.find(x=>x.id===s.clienteId);
+      return `<tr>
+        <td><span style="font-family:Share Tech Mono;font-size:12px">${s.data||'-'}</span></td>
+        <td>${c?c.nome:'—'}</td>
+        <td><span style="font-family:Share Tech Mono;background:var(--accent);color:#000;padding:2px 8px;font-size:11px;font-weight:700">${c?c.placa:'—'}</span></td>
+        <td style="max-width:200px">${s.desc}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${s.pecas||'—'}</td>
+        <td style="font-size:12px">${s.mecanico||'—'}</td>
+        <td style="color:var(--green);font-weight:700">${fmt(s.valor)}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="editServico('${s.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="delServico('${s.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+  function editServico(id) {
+    const s = data.servicos.find(x=>x.id===id);
+    document.getElementById('editSrvId').value = id;
+    document.getElementById('editSrvDesc').value = s.desc;
+    document.getElementById('editSrvValor').value = s.valor;
+    document.getElementById('editSrvPecas').value = s.pecas||'';
+    openModal('modalEditServico');
+  }
+  function saveEditServico() {
+    const id = document.getElementById('editSrvId').value;
+    const s = data.servicos.find(x=>x.id===id);
+    s.desc = document.getElementById('editSrvDesc').value;
+    s.valor = Number(document.getElementById('editSrvValor').value);
+    s.pecas = document.getElementById('editSrvPecas').value;
+    fbSaveServico(s);
+    closeModal('modalEditServico');
+  }
+  function delServico(id) {
+    if(!confirm('Excluir este serviço?')) return;
+    fbDeleteServico(id);
+  }
+
+  // ---- PAGAMENTOS ----
+  function renderPagamentoSelect() {
+    const sel = document.getElementById('pagCliente');
+    const val = sel.value;
+    sel.innerHTML = '<option value="">Selecione um cliente...</option>';
+    data.clientes.forEach(c => { sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`; });
+    sel.value = val;
+  }
+  function renderPagamento() {
+    const id = document.getElementById('pagCliente').value;
+    const area = document.getElementById('pagamentoArea');
+    if(!id) { area.innerHTML=''; return; }
+    const c = data.clientes.find(x=>x.id===id);
+    const servs = data.servicos.filter(s=>s.clienteId===id);
+    const total = servs.reduce((a,s)=>a+Number(s.valor),0);
+    let pag = data.pagamentos.find(p=>p.clienteId===id);
+    if(!pag) pag = {clienteId:id, pago:0, historico:[]};
+    const pago = Number(pag.pago||0);
+    const devendo = Math.max(0, total - pago);
+    const status = devendo<=0 ? 'QUITADO' : pago===0 ? 'PENDENTE' : 'PARCIAL';
+    const statusClass = devendo<=0 ? 'badge-green' : pago===0 ? 'badge-red' : 'badge-yellow';
+
+    area.innerHTML = `
+      <div class="section">
+        <div class="section-title">Situação de ${c.nome} — ${c.placa}</div>
+        <div class="payment-row">
+          <div><div class="payment-label">Total dos Serviços</div><div class="payment-value blue">${fmt(total)}</div></div>
+          <div><div class="payment-label">Total Pago</div><div class="payment-value green">${fmt(pago)}</div></div>
+          <div><div class="payment-label">Saldo Devedor</div><div class="payment-value ${devendo>0?'red':'green'}">${fmt(devendo)}</div></div>
+        </div>
+        <div style="margin-bottom:16px">
+          <span class="badge ${statusClass}">${status}</span>
+          ${total>0?`<div class="progress-bar" style="margin-top:12px"><div class="progress-fill" style="width:${Math.min(100,pago/total*100)}%"></div></div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">${Math.min(100,pago/total*100).toFixed(1)}% pago</div>`:''}
+        </div>
+        <div class="form-row" style="max-width:500px">
+          <div class="field"><label>Valor Recebido (R$)</label><input type="number" id="pagValor" placeholder="0,00" step="0.01" min="0"></div>
+          <div class="field"><label>Forma de Pagamento</label>
+            <select id="pagForma">
+              <option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Cheque</option><option>Transferência</option>
+            </select>
+          </div>
+          <div class="field" style="align-self:flex-end"><button class="btn btn-success" onclick="registrarPagamento('${id}')">💰 REGISTRAR PAGAMENTO</button></div>
+        </div>
+        ${pag.historico&&pag.historico.length?`
+        <div style="margin-top:20px">
+          <div class="section-title" style="font-size:14px">Histórico de Pagamentos</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Data</th><th>Valor</th><th>Forma</th></tr></thead>
+            <tbody>${pag.historico.map(h=>`<tr><td>${h.data}</td><td style="color:var(--green)">${fmt(h.valor)}</td><td>${h.forma}</td></tr>`).join('')}</tbody>
+          </table></div>
+        </div>`:''}
+      </div>
+      <div class="section">
+        <div class="section-title">Serviços Realizados</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Data</th><th>Serviço</th><th>Peças</th><th>Mecânico</th><th>Valor</th></tr></thead>
+          <tbody>${servs.length?servs.map(s=>`<tr><td>${s.data||'—'}</td><td>${s.desc}</td><td>${s.pecas||'—'}</td><td>${s.mecanico||'—'}</td><td style="color:var(--green)">${fmt(s.valor)}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Nenhum serviço</td></tr>'}</tbody>
+        </table></div>
+      </div>
+    `;
+  }
+  function registrarPagamento(clienteId) {
+    const valor = Number(document.getElementById('pagValor').value);
+    const forma = document.getElementById('pagForma').value;
+    if(!valor || valor<=0) { alert('Informe o valor recebido!'); return; }
+    let pag = data.pagamentos.find(p=>p.clienteId===clienteId);
+    if(!pag) pag = {clienteId, pago:0, historico:[]};
+    pag.pago = (Number(pag.pago)||0) + valor;
+    if(!pag.historico) pag.historico = [];
+    pag.historico.push({ data: today(), valor, forma });
+    fbSavePagamento(pag);
+  }
+
+  // ---- GASTOS ----
+  function addGasto() {
+    const categ = document.getElementById('gastoCateg').value;
+    const desc = document.getElementById('gastoDesc').value.trim();
+    const valor = Number(document.getElementById('gastoValor').value);
+    const dt = document.getElementById('gastoData').value;
+    if(!desc || !valor) { alert('Preencha descrição e valor!'); return; }
+    const gasto = { id: uid(), categ, desc, valor, data: dt||today() };
+    fbSaveGasto(gasto);
+    document.getElementById('gastoDesc').value='';
+    document.getElementById('gastoValor').value='';
+  }
+  function renderGastoFiltros() {
+    const categorias = [...new Set(data.gastos.map(g=>g.categ))];
+    const sel = document.getElementById('gastoFiltro');
+    sel.innerHTML = '<option value="">Todas</option>';
+    categorias.forEach(c => sel.innerHTML += `<option>${c}</option>`);
+
+    const meses = document.getElementById('gastoMes');
+    meses.innerHTML = '<option value="">Todos os meses</option>';
+    const now = new Date();
+    for(let i=0;i<12;i++) {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label = d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+      meses.innerHTML += `<option value="${val}">${label}</option>`;
+    }
+  }
+  function renderGastoCards() {
+    const por = {};
+    data.gastos.forEach(g => { por[g.categ] = (por[g.categ]||0) + g.valor; });
+    const total = Object.values(por).reduce((a,v)=>a+v,0);
+    const colors = ['','green','red','blue','orange'];
+    let i=0;
+    document.getElementById('gastoCards').innerHTML = `<div class="card"><div class="card-label">Total de Gastos</div><div class="card-value red">${fmt(total)}</div></div>` +
+      Object.entries(por).map(([k,v]) => `<div class="card ${colors[i++%colors.length]}"><div class="card-label">${k}</div><div class="card-value">${fmt(v)}</div></div>`).join('');
+  }
+  function renderGastos() {
+    const filtro = document.getElementById('gastoFiltro')?.value||'';
+    const mes = document.getElementById('gastoMes')?.value||'';
+    let list = data.gastos.filter(g => (!filtro||g.categ===filtro) && (!mes||g.data.startsWith(mes)));
+    const tbody = document.getElementById('gastosTable');
+    if(!list.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">Nenhum gasto registrado</td></tr>'; return; }
+    tbody.innerHTML = list.map(g => `<tr>
+      <td><span style="font-family:Share Tech Mono;font-size:12px">${g.data}</span></td>
+      <td><span class="badge badge-yellow">${g.categ}</span></td>
+      <td>${g.desc}</td>
+      <td style="color:var(--red);font-weight:700">${fmt(g.valor)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delGasto('${g.id}')">🗑️</button></td>
+    </tr>`).join('');
+  }
+  function delGasto(id) {
+    if(!confirm('Excluir este gasto?')) return;
+    fbDeleteGasto(id);
+  }
+
+  // ---- RELATÓRIOS / NOTA ----
+  function renderRelatorioSelect() {
+    const sel = document.getElementById('relCliente');
+    const val = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    data.clientes.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.nome} — ${c.placa}</option>`);
+    sel.value = val;
+  }
+  function previewNota() {
+    const id = document.getElementById('relCliente').value;
+    if(!id) { document.getElementById('notaPreview').innerHTML=''; return; }
+    document.getElementById('notaPreview').innerHTML = `<div class="section"><div class="section-title">Pré-visualização</div>${buildReceiptHTML(id)}</div>`;
+  }
+  function buildReceiptHTML(clienteId) {
+    const c = data.clientes.find(x=>x.id===clienteId);
+    const servs = data.servicos.filter(s=>s.clienteId===clienteId);
+    const total = servs.reduce((a,s)=>a+Number(s.valor),0);
+    const pag = data.pagamentos.find(p=>p.clienteId===clienteId);
+    const pago = pag ? Number(pag.pago||0) : 0;
+    const devendo = Math.max(0, total - pago);
+    const dt = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+    return `<div class="receipt">
+      <div class="receipt-header">
+        <h1>⚙️ OFICINA MECÂNICA DO ABEL</h1>
+        <p>Serviços em Caminhões e Veículos Pesados</p>
+        <p>Data de emissão: ${dt}</p>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Dados do Cliente</div>
+        <div class="receipt-info">
+          <div><strong>Nome:</strong> ${c.nome}</div>
+          <div><strong>Telefone:</strong> ${c.tel||'—'}</div>
+          <div><strong>Caminhão:</strong> ${c.caminhao}</div>
+          <div><strong>Placa:</strong> ${c.placa}</div>
+          <div><strong>Ano:</strong> ${c.ano||'—'}</div>
+          <div><strong>Cor:</strong> ${c.cor||'—'}</div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Serviços Realizados</div>
+      <table class="receipt-table">
+        <thead><tr><th>Data</th><th>Serviço</th><th>Peças</th><th>Mecânico</th><th style="text-align:right">Valor</th></tr></thead>
+        <tbody>
+          ${servs.length?servs.map(s=>`<tr><td>${s.data||'—'}</td><td>${s.desc}</td><td>${s.pecas||'—'}</td><td>${s.mecanico||'—'}</td><td style="text-align:right">R$ ${Number(s.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">Nenhum serviço</td></tr>'}
+        </tbody>
+      </table>
+      <div class="receipt-total">
+        <div class="total-line"><span>Total dos Serviços:</span><span>R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div class="total-line"><span>Valor Pago:</span><span style="color:green">R$ ${pago.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div class="total-line grand"><span>SALDO DEVEDOR:</span><span style="color:${devendo>0?'red':'green'}">R$ ${devendo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      </div>
+      ${c.obs?`<div style="margin-top:16px;padding:12px;background:#f5f5f5;font-size:13px"><strong>Observações:</strong> ${c.obs}</div>`:''}
+      <div class="receipt-footer">
+        <p>Oficina Mecânica do Abel — Obrigado pela preferência!</p>
+        <p style="margin-top:4px">Esta nota não tem valor fiscal</p>
+      </div>
+    </div>`;
+  }
+  function imprimirNota() {
+    const id = document.getElementById('relCliente').value;
+    if(!id) { alert('Selecione um cliente!'); return; }
+    const html = buildReceiptHTML(id);
+    const win = window.open('','_blank');
+    win.document.write(`<!DOCTYPE html><html><head><title>Nota - Oficina do Abel</title>
+      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+      <style>
+        body{margin:0;padding:20px;background:#fff;font-family:Rajdhani,sans-serif}
+        .receipt{max-width:700px;margin:0 auto;padding:40px}
+        .receipt-header{text-align:center;border-bottom:2px solid #000;padding-bottom:16px;margin-bottom:16px}
+        .receipt-header h1{font-family:'Bebas Neue';font-size:28px;letter-spacing:2px}
+        .receipt-header p{font-size:13px;color:#555}
+        .receipt-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+        .receipt-info div{font-size:14px}
+        table{width:100%;border-collapse:collapse;margin-bottom:16px}
+        th{background:#000;color:#fff;padding:8px 12px;text-align:left;font-size:12px;letter-spacing:1px}
+        td{padding:8px 12px;border-bottom:1px solid #ddd;font-size:13px}
+        .receipt-total{text-align:right;border-top:2px solid #000;padding-top:12px}
+        .total-line{display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px}
+        .grand{font-family:'Bebas Neue';font-size:22px}
+        .receipt-footer{text-align:center;margin-top:20px;font-size:12px;color:#777;border-top:1px solid #ddd;padding-top:12px}
+        @media print{@page{margin:10mm}}
+      </style></head><body>${html}<br><button onclick="window.print()" style="display:block;margin:20px auto;padding:12px 30px;background:#000;color:#fff;border:none;font-size:16px;cursor:pointer;font-family:Rajdhani;letter-spacing:2px">🖨️ IMPRIMIR</button></body></html>`);
+    win.document.close();
+  }
+
+  // ---- MODALS ----
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+</script>
 </body>
 </html>
-
-
