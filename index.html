@@ -931,8 +931,8 @@
         <div style="margin-top:20px">
           <div class="section-title" style="font-size:14px">Histórico de Pagamentos</div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Data</th><th>Valor</th><th>Forma</th></tr></thead>
-            <tbody>${pag.historico.map(h=>`<tr><td>${h.data}</td><td style="color:var(--green)">${fmt(h.valor)}</td><td>${h.forma}</td></tr>`).join('')}</tbody>
+            <thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Ações</th></tr></thead>
+            <tbody>${pag.historico.map((h,i)=>`<tr><td>${h.data}</td><td style="color:var(--green)">${fmt(h.valor)}</td><td>${h.forma}</td><td><button class="btn btn-danger btn-sm" onclick="delEntradaPagamento('${id}',${i})">🗑️ Excluir</button></td></tr>`).join('')}</tbody>
           </table></div>
         </div>`:''}
       </div>
@@ -954,6 +954,16 @@
     pag.pago = (Number(pag.pago)||0) + valor;
     if(!pag.historico) pag.historico = [];
     pag.historico.push({ data: today(), valor, forma });
+    fbSavePagamento(pag);
+  }
+  function delEntradaPagamento(clienteId, index) {
+    if(!confirm('Excluir este pagamento do histórico?')) return;
+    let pag = data.pagamentos.find(p=>p.clienteId===clienteId);
+    if(!pag || !pag.historico) return;
+    const entrada = pag.historico[index];
+    if(!entrada) return;
+    pag.historico.splice(index, 1);
+    pag.pago = Math.max(0, (Number(pag.pago)||0) - Number(entrada.valor));
     fbSavePagamento(pag);
   }
 
