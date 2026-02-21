@@ -720,7 +720,11 @@
       return a + recebidoNoMes;
     }, 0);
 
-    const totalGeral = data.servicos.reduce((a,s) => a+Number(s.valor),0);
+    // Total de serviços registrados no mês selecionado
+    const totalGeral = data.servicos.filter(s => {
+      const d = new Date(s.data+'T12:00:00');
+      return d.getMonth()===mes && d.getFullYear()===ano;
+    }).reduce((a,s) => a+Number(s.valor),0);
     const totalGastosMes = data.gastos.filter(g => {
       const d = new Date(g.data+'T12:00:00');
       return d.getMonth()===mes && d.getFullYear()===ano;
@@ -744,7 +748,7 @@
       <div class="card"><div class="card-label">Faturamento — ${mesLabel}</div><div class="card-value money">${fmt(totalMes)}</div></div>
       <div class="card green"><div class="card-label">Lucro — ${mesLabel}</div><div class="card-value ${lucroMes>=0?'money':'red'}">${fmt(lucroMes)}</div></div>
       <div class="card red"><div class="card-label">Gastos — ${mesLabel}</div><div class="card-value red">${fmt(totalGastosMes)}</div></div>
-      <div class="card blue"><div class="card-label">Total Geral de Serviços</div><div class="card-value blue">${fmt(totalGeral)}</div></div>
+      <div class="card blue"><div class="card-label">Serviços Registrados — ${mesLabel}</div><div class="card-value blue">${fmt(totalGeral)}</div></div>
       <div class="card"><div class="card-label">Clientes Cadastrados</div><div class="card-value">${data.clientes.length}</div></div>
       <div class="card orange"><div class="card-label">A Receber</div><div class="card-value" style="color:var(--accent)">${fmt(totalDevendo)}</div></div>
     `;
