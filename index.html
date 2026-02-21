@@ -568,7 +568,7 @@
     window.data.clientes = objToArr(snapshot.val());
     listenersReady.clientes = true;
     checkAllReady();
-    if (document.getElementById('app').style.display !== 'none') {
+    if (document.getElementById("app").style.display !== "none") {
       renderClientes();
       renderServicoSelects();
       renderPagamentoSelect();
@@ -581,7 +581,7 @@
     window.data.servicos = objToArr(snapshot.val());
     listenersReady.servicos = true;
     checkAllReady();
-    if (document.getElementById('app').style.display !== 'none') {
+    if (document.getElementById("app").style.display !== "none") {
       renderServicos();
       renderDashboard();
     }
@@ -593,6 +593,8 @@
     checkAllReady();
     if (document.getElementById('app').style.display !== 'none') {
       renderDashboard();
+      const pagClienteSel = document.getElementById('pagCliente');
+      if (pagClienteSel && pagClienteSel.value) renderPagamento();
     }
   });
 
@@ -600,7 +602,7 @@
     window.data.gastos = objToArr(snapshot.val());
     listenersReady.gastos = true;
     checkAllReady();
-    if (document.getElementById('app').style.display !== 'none') {
+    if (document.getElementById("app").style.display !== "none") {
       renderGastos();
       renderGastoCards();
       renderGastoFiltros();
