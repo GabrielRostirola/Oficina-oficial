@@ -708,11 +708,18 @@
       ano = new Date().getFullYear();
     }
 
-    const servMes = data.servicos.filter(s => {
-      const d = new Date(s.data+'T12:00:00');
-      return d.getMonth()===mes && d.getFullYear()===ano;
-    });
-    const totalMes = servMes.reduce((a,s) => a+Number(s.valor),0);
+    // Faturamento = pagamentos recebidos no mês selecionado
+    const totalMes = data.pagamentos.reduce((a, pag) => {
+      if (!pag.historico) return a;
+      const recebidoNoMes = pag.historico
+        .filter(h => {
+          const d = new Date(h.data+'T12:00:00');
+          return d.getMonth()===mes && d.getFullYear()===ano;
+        })
+        .reduce((s, h) => s + Number(h.valor), 0);
+      return a + recebidoNoMes;
+    }, 0);
+
     const totalGeral = data.servicos.reduce((a,s) => a+Number(s.valor),0);
     const totalGastosMes = data.gastos.filter(g => {
       const d = new Date(g.data+'T12:00:00');
