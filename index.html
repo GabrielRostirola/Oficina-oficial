@@ -294,7 +294,13 @@
 
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
-    <div class="page-title">PAINEL PRINCIPAL</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px;">
+      <div class="page-title" style="margin-bottom:0">PAINEL PRINCIPAL</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted)">Visualizando:</span>
+        <select id="dashMesSel" onchange="renderDashboard()" style="padding:8px 14px;background:var(--surface);border:1px solid var(--border);color:var(--accent);font-family:Rajdhani;font-size:14px;font-weight:700;outline:none;letter-spacing:1px;cursor:pointer;"></select>
+      </div>
+    </div>
     <div class="page-sub">Visão geral da oficina</div>
     <div class="cards-row" id="dashCards"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
@@ -669,9 +675,39 @@
   }
 
   // ---- DASHBOARD ----
+  function populateDashMesSel() {
+    const sel = document.getElementById('dashMesSel');
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = '';
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const label = d.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+      if (i === 0) opt.textContent += ' (atual)';
+      sel.appendChild(opt);
+    }
+    if (current) sel.value = current;
+  }
+
   function renderDashboard() {
-    const mes = new Date().getMonth();
-    const ano = new Date().getFullYear();
+    populateDashMesSel();
+    const sel = document.getElementById('dashMesSel');
+    const selVal = sel ? sel.value : '';
+    let mes, ano;
+    if (selVal) {
+      const parts = selVal.split('-');
+      ano = parseInt(parts[0]);
+      mes = parseInt(parts[1]) - 1;
+    } else {
+      mes = new Date().getMonth();
+      ano = new Date().getFullYear();
+    }
+
     const servMes = data.servicos.filter(s => {
       const d = new Date(s.data+'T12:00:00');
       return d.getMonth()===mes && d.getFullYear()===ano;
@@ -694,10 +730,13 @@
       totalDevendo += Math.max(0, totalSrv - pago);
     });
 
+    // Label for cards
+    const mesLabel = sel ? sel.options[sel.selectedIndex]?.text.replace(' (atual)','') : '';
+
     document.getElementById('dashCards').innerHTML = `
-      <div class="card"><div class="card-label">Faturamento do Mês</div><div class="card-value money">${fmt(totalMes)}</div></div>
-      <div class="card green"><div class="card-label">Lucro do Mês</div><div class="card-value ${lucroMes>=0?'money':'red'}">${fmt(lucroMes)}</div></div>
-      <div class="card red"><div class="card-label">Gastos do Mês</div><div class="card-value red">${fmt(totalGastosMes)}</div></div>
+      <div class="card"><div class="card-label">Faturamento — ${mesLabel}</div><div class="card-value money">${fmt(totalMes)}</div></div>
+      <div class="card green"><div class="card-label">Lucro — ${mesLabel}</div><div class="card-value ${lucroMes>=0?'money':'red'}">${fmt(lucroMes)}</div></div>
+      <div class="card red"><div class="card-label">Gastos — ${mesLabel}</div><div class="card-value red">${fmt(totalGastosMes)}</div></div>
       <div class="card blue"><div class="card-label">Total Geral de Serviços</div><div class="card-value blue">${fmt(totalGeral)}</div></div>
       <div class="card"><div class="card-label">Clientes Cadastrados</div><div class="card-value">${data.clientes.length}</div></div>
       <div class="card orange"><div class="card-label">A Receber</div><div class="card-value" style="color:var(--accent)">${fmt(totalDevendo)}</div></div>
